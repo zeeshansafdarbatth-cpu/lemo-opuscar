@@ -1,48 +1,63 @@
 # Copy this file to config.yaml and fill in the real names and numbers.
-# Phone numbers in international format: +92 300 1234567, +44 7700 900123, +1 415 555 0100.
+# Phone numbers in international format: +92 300 1234567.
+# Set up for a mother who speaks Punjabi and Urdu and helpers who speak Urdu.
 
 mom:
   name: "Mrs. Batth"                # used when talking to helpers: "This is a call for Mrs. Batth"
-  call_her: "Ammi"                  # what the assistant calls her
+  call_her: "امی جی"                 # what the assistant calls her
   phones: ["+923000000000"]         # every number she calls from (mobile, landline). Other callers are refused.
-  # Twilio language code for listening and speaking to her, and its plain name.
-  # Check that Twilio supports your language for both speech recognition and <Say>:
-  #   https://www.twilio.com/docs/voice/twiml/gather#languagetags
-  #   https://www.twilio.com/docs/voice/twiml/say/text-speech#available-voices-and-languages
-  language: "en-US"
-  language_name: "English"          # e.g. "Urdu", "Punjabi", "Hindi"
-  # voice: "Google.en-US-Standard-C"  # optional: a specific Twilio voice
-  greeting: "Hello {call_her}, who do you need today?"
+
+  # Listening: Twilio recognises Urdu (Pakistan). It has no Punjabi recogniser for Pakistan, so her
+  # Punjabi arrives as rough Urdu text; the assistant is told to expect that and read it by sound.
+  language: "ur-PK"
+  speaks: "Punjabi and Urdu, often mixed in one sentence"
+  # Speaking: the assistant answers her in simple Urdu, written in Urdu script.
+  language_name: "Urdu"
+  # voice: ""                       # a Twilio voice for Urdu if your account lists one, see README "Her voice"
+
   # Anything the assistant should know: health, routines, how she likes to be spoken to.
   notes: |
-    Hears better when spoken to slowly. Goes to Dr. Khan's clinic on Tuesdays.
-    Prefers Rashid for rides. Groceries come from Akbar Store.
-  # What she hears when the agent calls her back. Translate these into her language.
-  said_yes: "{call_her}, good news. {name} said yes and will help you."
-  nobody_reached: "{call_her}, I could not reach {names}. I have told {family}, and they will call you soon."
-  didnt_hear: "Sorry {call_her}, I didn't hear you. Please tell me again."
-  still_thinking: "One moment."
+    Speaks Punjabi at home and Urdu with outsiders. Hears better when spoken to slowly.
+    Goes to Dr. Khan's clinic on Tuesdays. Prefers Rashid for rides. Groceries come from Akbar Store.
+
+  # Fixed things she hears, in Urdu. {call_her}, {name}, {names}, {family} are filled in.
+  greeting: "السلام علیکم {call_her}۔ بتائیں، کس کو بلاؤں؟"
+  said_yes: "{call_her}، اچھی خبر ہے۔ {name} نے ہاں کر دی ہے، وہ آپ کی مدد کریں گے۔"
+  nobody_reached: "{call_her}، {names} سے بات نہیں ہو سکی۔ میں نے {family} کو بتا دیا ہے، وہ جلدی آپ کو فون کریں گے۔"
+  asking_family: "{call_her}، میں {name} کو کہہ رہی ہوں کہ آپ کو ابھی فون کریں۔"
+  didnt_hear: "معاف کیجیے {call_her}، آواز نہیں آئی۔ ذرا دوبارہ بتائیں۔"
+  still_thinking: "ایک منٹ جی۔"
+  stranger: "معاف کیجیے، یہ نمبر نجی ہے۔ خدا حافظ۔"
+  and_word: "اور"
+  # What helpers hear after pressing a key.
+  helper_thanks: "بہت شکریہ۔"
+  helper_already_handled: "شکریہ، یہ کام ہو چکا ہے۔"
 
 # Family: the last resort when nobody answers, and always alerted in an emergency.
 family:
   - id: son
     name: "Zeeshan"
+    spoken_name: "ذیشان"            # how the voice says his name to her, in Urdu script
     phone: "+923001111111"
+    language: "en-US"               # family alerts are spoken and texted in English
+    language_name: "English"
     speed_dial: "9"                 # she can press 9 instead of speaking
 
 helpers:
   - id: driver
     name: "Rashid"
+    spoken_name: "راشد"
     role: "Driver"
     phone: "+923002222222"
     helps_with: "rides, doctor visits, picking up medicines, shopping trips"
-    language: "en-US"               # how the agent speaks to him (Twilio code)
-    language_name: "English"
+    language: "ur-PK"               # how the agent speaks to him (Twilio code)
+    language_name: "Urdu"
     available: "8am to 8pm"
     speed_dial: "1"
 
   - id: maid
     name: "Shazia"
+    spoken_name: "شازیہ"
     role: "Housekeeper"
     phone: "+923003333333"
     helps_with: "cleaning, cooking, laundry, help around the house"
@@ -50,6 +65,7 @@ helpers:
 
   - id: nurse
     name: "Nurse Amina"
+    spoken_name: "نرس آمنہ"
     role: "Home nurse"
     phone: "+923004444444"
     helps_with: "blood pressure, injections, feeling unwell, medicine questions"
@@ -57,12 +73,14 @@ helpers:
 
   - id: grocer
     name: "Akbar Store"
+    spoken_name: "اکبر سٹور"
     role: "Grocery shop"
     phone: "+923005555555"
     helps_with: "groceries, milk, bread, household items delivered"
 
   - id: plumber
     name: "Bashir"
+    spoken_name: "بشیر"
     role: "Plumber and electrician"
     phone: "+923006666666"
     helps_with: "leaks, taps, toilet, water pump, lights, fans, wiring"
@@ -79,3 +97,8 @@ settings:
   allow_unknown_callers: false
   model: "claude-opus-5-5"
   effort: "low"                     # low keeps phone replies quick
+  # How the assistant's words are spoken. "twilio" uses a Twilio voice (set mom.voice), "elevenlabs"
+  # uses a natural Urdu voice from ElevenLabs (set ELEVENLABS_API_KEY and the voice id). See README.
+  speech: "twilio"
+  # elevenlabs_voice_id: ""
+  # elevenlabs_model: "eleven_v3"

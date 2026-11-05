@@ -18,7 +18,8 @@ from dataclasses import dataclass, field
 from .activity import ActivityLog
 from .brain import Decision
 from .config import Config, Person
-from .telephony import Phone, say_twiml
+from .telephony import Phone
+from .voice import TwilioVoice, Voice, spoken_twiml
 
 log = logging.getLogger(__name__)
 
@@ -63,8 +64,9 @@ class Task:
 
 
 class Dispatcher:
-    def __init__(self, cfg: Config, phone: Phone, public_url: str, activity: ActivityLog):
+    def __init__(self, cfg: Config, phone: Phone, public_url: str, activity: ActivityLog, speaker: Voice | None = None):
         self.cfg, self.phone, self.activity = cfg, phone, activity
+        self.speaker = speaker or TwilioVoice()
         self.base = public_url.rstrip("/")
         self.tasks: dict[str, Task] = {}
         self._running: set[asyncio.Task] = set()
@@ -210,7 +212,7 @@ class Dispatcher:
         helper = self.cfg.person(task.helped_by)
         self.activity.add("confirmed", f"{helper.name} said yes: {task.decision.summary}", task=task.id)
         mom = self.cfg.mom
-        await self._tell_mom(mom.said_yes.format(call_her=mom.call_her, name=helper.name))
+        await self._tell_mom(mom.said_yes.format(call_her=mom.call_her, name=self.cfg.spoken(helper)))
         if self.cfg.settings.text_family_every_request or task.decision.action == "emergency":
             for p in self.cfg.family:
                 if p.id != helper.id:
@@ -218,25 +220,29 @@ class Dispatcher:
 
     async def _give_up(self, task: Task):
         task.status = "failed"
-        names = [self.cfg.person(c.helper_id).name for c in task.decision.contacts]
+        people = [self.cfg.person(c.helper_id) for c in task.decision.contacts]
         self.activity.add("failed", f"Nobody said yes: {task.decision.summary}", task=task.id)
-        await self._alert_family(task, f"Nobody said yes ({', '.join(names)})")
+        await self._alert_family(task, f"Nobody said yes ({', '.join(p.name for p in people)})")
         mom = self.cfg.mom
+        joiner = f" {mom.and_word} "
         await self._tell_mom(mom.nobody_reached.format(
-            call_her=mom.call_her, names=" and ".join(names), family=" and ".join(p.name for p in self.cfg.family)))
+            call_her=mom.call_her, names=joiner.join(self.cfg.spoken(p) for p in people),
+            family=joiner.join(self.cfg.spoken(p) for p in self.cfg.family)))
 
     async def _alert_family(self, task: Task, why: str):
         mom = self.cfg.mom
         text = f"[{mom.name}'s helper line] {why}. She asked for: {task.decision.summary}. Please call her: {mom.phones[0]}"
         for p in self.cfg.family:
             await self.phone.sms(p.phone, text)
-            await self.phone.call(p.phone, twiml=say_twiml(text, self.cfg.lang_for(p), p.voice, repeat=2),
+            spoken = await spoken_twiml(self.speaker, text, self.cfg.lang_for(p), p.voice, repeat=2)
+            await self.phone.call(p.phone, twiml=spoken,
                                   ring_seconds=self.cfg.settings.ring_seconds)
 
     async def _tell_mom(self, text: str):
         mom, s = self.cfg.mom, self.cfg.settings
         if s.call_mom_with_result:
-            await self.phone.call(mom.phones[0], twiml=say_twiml(text, mom.language, mom.voice, repeat=2),
+            spoken = await spoken_twiml(self.speaker, text, mom.language, mom.voice, repeat=2)
+            await self.phone.call(mom.phones[0], twiml=spoken,
                                   ring_seconds=s.ring_seconds)
         if s.text_mom_with_result:
             await self.phone.sms(mom.phones[0], text)

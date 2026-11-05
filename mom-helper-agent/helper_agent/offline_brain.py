@@ -8,8 +8,9 @@ import re
 from .brain import Contact, Decision
 from .config import Config
 
-EMERGENCY = ("fell", "fallen", "fall down", "chest", "breathe", "breathing", "emergency", "ambulance", "bleeding", "stroke", "help me")
-BYE = ("bye", "nothing", "that's all", "thank you", "khuda hafiz", "allah hafiz")
+EMERGENCY = ("fell", "fallen", "fall down", "chest", "breathe", "breathing", "emergency", "ambulance", "bleeding", "stroke", "help me",
+             "گر گئی", "گری", "ڈگ", "ڈِگ", "سینے", "سانس", "ایمرجنسی", "ایمبولینس", "خون", "بچاؤ")
+BYE = ("bye", "nothing", "that's all", "thank you", "khuda hafiz", "allah hafiz", "خدا حافظ", "اللہ حافظ", "بس", "شکریہ")
 
 
 class KeywordBrain:

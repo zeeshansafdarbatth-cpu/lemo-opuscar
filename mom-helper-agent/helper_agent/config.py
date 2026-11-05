@@ -19,6 +19,8 @@ def normalize_phone(number: str) -> str:
 class Person(BaseModel):
     id: str
     name: str
+    # The name as it should be spoken to Mom, in her script (e.g. "راشد"), so the voice says it right.
+    spoken_name: str | None = None
     phone: str
     role: str = ""
     helps_with: str = ""
@@ -35,17 +37,26 @@ class Mom(BaseModel):
     name: str
     call_her: str = Field(description="What the assistant calls her, e.g. 'Ammi'")
     phones: list[str]
+    # Twilio code used to listen to her and speak to her, e.g. "ur-PK".
     language: str = "en-US"
+    # The language the assistant speaks to her, and the script to write it in.
     language_name: str = "English"
+    # The languages she may speak, if more than one (e.g. "Punjabi and Urdu, often mixed").
+    speaks: str = ""
     voice: str | None = None
-    greeting: str = "Hello {call_her}, who do you need today?"
     notes: str = ""
-    # What she hears when the dispatcher calls her back. Translate these into her language.
+    # Fixed things she hears. Write them in her language.
+    greeting: str = "Hello {call_her}, who do you need today?"
     said_yes: str = "{call_her}, good news. {name} said yes and will help you."
     nobody_reached: str = "{call_her}, I could not reach {names}. I have told {family}, and they will call you soon."
+    asking_family: str = "{call_her}, I'm asking {name} to call you now."
     didnt_hear: str = "Sorry {call_her}, I didn't hear you. Please tell me again."
     still_thinking: str = "One moment."
     stranger: str = "Sorry, this line is private. Goodbye."
+    and_word: str = "and"
+    # Fixed things helpers hear after pressing a key.
+    helper_thanks: str = "Thank you."
+    helper_already_handled: str = "Thank you, this request has already been handled."
 
 
 class Settings(BaseModel):
@@ -60,6 +71,10 @@ class Settings(BaseModel):
     allow_unknown_callers: bool = False
     model: str = "claude-opus-5-5"
     effort: str = "low"
+    # "twilio": Twilio's built-in voices. "elevenlabs": ElevenLabs voices (needs ELEVENLABS_API_KEY).
+    speech: str = "twilio"
+    elevenlabs_voice_id: str = ""
+    elevenlabs_model: str = "eleven_v3"
 
 
 class Config(BaseModel):
@@ -85,6 +100,9 @@ class Config(BaseModel):
     def is_mom(self, phone: str) -> bool:
         target = normalize_phone(phone)
         return any(normalize_phone(p) == target for p in self.mom.phones)
+
+    def spoken(self, person: Person) -> str:
+        return person.spoken_name or person.name
 
     def lang_for(self, person: Person) -> str:
         return person.language or self.mom.language

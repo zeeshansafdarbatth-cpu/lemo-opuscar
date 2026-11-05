@@ -6,8 +6,6 @@ import asyncio
 import logging
 from typing import Protocol
 
-from twilio.twiml.voice_response import VoiceResponse
-
 log = logging.getLogger(__name__)
 
 
@@ -15,16 +13,6 @@ class Phone(Protocol):
     async def call(self, to: str, *, url: str | None = None, twiml: str | None = None,
                    status_callback: str | None = None, ring_seconds: int = 25) -> str: ...
     async def sms(self, to: str, body: str) -> None: ...
-
-
-def say_twiml(text: str, language: str, voice: str | None = None, repeat: int = 1) -> str:
-    r = VoiceResponse()
-    r.pause(length=1)
-    for i in range(repeat):
-        if i:
-            r.pause(length=1)
-        r.say(text, language=language, **({"voice": voice} if voice else {}))
-    return str(r)
 
 
 class TwilioPhone:

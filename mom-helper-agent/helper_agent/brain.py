@@ -34,7 +34,7 @@ class Brain(Protocol):
 def build_system_prompt(cfg: Config) -> str:
     mom = cfg.mom
     people = "\n".join(
-        f"- id: {p.id} | {p.name} | {p.role or 'family'} | helps with: {p.helps_with or 'anything'}"
+        f"- id: {p.id} | {p.name}{f' (say: {p.spoken_name})' if p.spoken_name else ''} | {p.role or 'family'} | helps with: {p.helps_with or 'anything'}"
         f" | speaks: {p.language_name or mom.language_name} | available: {p.available}"
         f"{' | FAMILY' if p in cfg.family else ''}"
         for p in cfg.everyone
@@ -43,9 +43,10 @@ def build_system_prompt(cfg: Config) -> str:
     return f"""You are the phone assistant of {mom.name}, an elderly woman. Instead of dialing her helpers again and again, she calls you and says what she needs. You work out who should help, and a dispatcher then calls that person for her, keeps retrying, tries backups, and calls her back with the answer. She does not need to stay on the line.
 
 You are talking with her on a phone call. Your words in say_to_mom are read aloud by a text-to-speech voice.
-- Speak {mom.language_name}. Call her "{mom.call_her}". Be warm, patient and respectful, like a trusted family member.
+- Speak simple, everyday, respectful {mom.language_name}, written in its own script (for Urdu: Urdu script, never Roman letters), because a voice reads it aloud. Call her "{mom.call_her}". Be warm and patient, like a trusted family member.
 - One or two short sentences. No lists, symbols, numbers in digits or emojis.
-- Speech recognition sometimes mishears her. If the request is unclear, ask one simple question, or offer the most likely option ("Shall I call Rashid the driver?").
+- Speech recognition sometimes mishears her. If the request is unclear, ask one simple question, or offer the most likely option as a yes-or-no question ("Shall I call Rashid the driver?").{_speaks_note(cfg)}
+- When you say a person's name to her, use the "say" spelling from the list below.
 - Never ask for, repeat or pass on passwords, PINs, bank or card details. If she mentions someone asking her for these, tell her not to share them and contact family.
 
 Choose one action:
@@ -58,7 +59,7 @@ Choose one action:
 
 Each contact message is what that person hears on the phone and gets by text, in the language they speak:
 - Say it is on behalf of {mom.name}, what she needs, and when.
-- Plain, polite, two or three sentences.
+- Plain, polite, two or three sentences, in that person's own script.
 - End with: press 1 or reply 1 if you can help, press 2 or reply 2 if you cannot (in their language).
 
 People you can contact:
@@ -66,6 +67,14 @@ People you can contact:
 
 About her:
 {mom.notes or 'No notes.'}"""
+
+
+def _speaks_note(cfg: Config) -> str:
+    mom = cfg.mom
+    if not mom.speaks:
+        return ""
+    return f"""
+- She speaks {mom.speaks}. Her words reach you through speech recognition set to {mom.language}, so words from another language often arrive as rough spellings or wrongly heard words. Read them generously, by sound as well as meaning: for Punjabi heard as Urdu, "ڈگ پئی" or "ڈِگ گئی" means she fell, "نئیں" means no, "کِتھے" means where, "پانی ٹپک رہا" a leak. If she answers your question in either language, take the answer. Reply in {mom.language_name} even when she speaks another language, unless she asks otherwise."""
 
 
 class ClaudeBrain:
@@ -115,7 +124,7 @@ class ClaudeBrain:
         mom, first = self.cfg.mom, self.cfg.family[0]
         return Decision(
             action="dispatch",
-            say_to_mom=f"I'm asking {first.name} to call you back now, {mom.call_her}.",
+            say_to_mom=mom.asking_family.format(call_her=mom.call_her, name=self.cfg.spoken(first)),
             contacts=[Contact(helper_id=p.id, message=f"{mom.name} called her helper line and needs you. She said: \"{heard}\". Please call her back. Press 1 or reply 1 if you will, 2 if you can't.") for p in self.cfg.family],
             summary=f"Assistant couldn't handle the request, passed to family: {heard}",
         )

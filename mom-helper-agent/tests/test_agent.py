@@ -59,7 +59,7 @@ async def test_retries_until_helper_answers(cfg):
     assert len(calls_to(phone, cfg, "driver")) == 3
     assert not calls_to(phone, cfg, "son")
     mom_call = calls_to_mom(phone, cfg)
-    assert mom_call and "Rashid said yes" in mom_call[-1]["twiml"]
+    assert mom_call and cfg.mom.said_yes.format(call_her=cfg.mom.call_her, name="راشد") in mom_call[-1]["twiml"]
 
 
 def calls_to_mom(phone, cfg):
@@ -87,7 +87,7 @@ async def test_nobody_answers_alerts_family_and_tells_mom(cfg):
     assert len(calls_to(phone, cfg, "driver")) == 3 and len(calls_to(phone, cfg, "maid")) == 3
     family_phone = cfg.person("son").phone
     assert any(t["to"] == family_phone and "Nobody said yes" in t["body"] for t in phone.texts)
-    assert "could not reach Rashid and Shazia" in calls_to_mom(phone, cfg)[-1]["twiml"]
+    assert "راشد اور شازیہ" in calls_to_mom(phone, cfg)[-1]["twiml"]
 
 
 async def test_text_reply_counts_while_waiting_between_calls(cfg):
@@ -150,7 +150,9 @@ def test_system_prompt_lists_everyone(cfg):
     prompt = build_system_prompt(cfg)
     for p in cfg.everyone:
         assert f"id: {p.id}" in prompt
-    assert "Ammi" in prompt and "1122" in prompt
+    assert cfg.mom.call_her in prompt and "1122" in prompt
+    assert "Punjabi and Urdu" in prompt and "Urdu script" in prompt
+    assert "Rashid (say: راشد)" in prompt
 
 
 # ---- webhooks --------------------------------------------------------------
@@ -164,16 +166,17 @@ def server(cfg):
         yield client, app, phone
 
 
-def test_stranger_is_refused(server):
+def test_stranger_is_refused(server, cfg):
     client, _, _ = server
     r = client.post("/voice/mom/incoming", data={"From": "+15550000000", "CallSid": "CA1"})
-    assert "private" in r.text and "<Hangup" in r.text
+    assert cfg.mom.stranger in r.text and "<Hangup" in r.text
 
 
 def test_mom_call_dispatches_and_helper_presses_1(server, cfg):
     client, app, phone = server
     r = client.post("/voice/mom/incoming", data={"From": cfg.mom.phones[0], "CallSid": "CA1"})
-    assert "who do you need" in r.text and "<Gather" in r.text
+    assert cfg.mom.greeting.format(call_her=cfg.mom.call_her) in r.text
+    assert 'language="ur-PK"' in r.text and "Rashid" in r.text  # Urdu recognition, names as hints
     r = client.post("/voice/mom/heard", data={"CallSid": "CA1", "SpeechResult": "I need a ride to the doctor"})
     assert "calling Rashid" in r.text and "<Hangup" in r.text
     d = app.state.dispatcher
@@ -202,9 +205,10 @@ def test_three_silences_get_family_to_call(server, cfg):
     client.post("/voice/mom/incoming", data={"From": cfg.mom.phones[0], "CallSid": "CA3"})
     for _ in range(2):
         r = client.post("/voice/mom/heard?silent=1", data={"CallSid": "CA3"})
-        assert "didn't hear" in r.text
+        assert cfg.mom.didnt_hear.format(call_her=cfg.mom.call_her) in r.text
     r = client.post("/voice/mom/heard?silent=1", data={"CallSid": "CA3"})
-    assert "Zeeshan" in r.text and app.state.dispatcher.tasks
+    assert cfg.mom.asking_family.format(call_her=cfg.mom.call_her, name="ذیشان") in r.text
+    assert app.state.dispatcher.tasks
 
 
 def test_sms_reply(server, cfg):
@@ -228,3 +232,36 @@ def test_twilio_signature_checked(cfg):
     with TestClient(app) as client:
         r = client.post("/voice/mom/incoming", data={"From": cfg.mom.phones[0]}, headers={"X-Twilio-Signature": "bad"})
         assert r.status_code == 403
+
+
+def test_punjabi_emergency_offline(cfg):
+    d = asyncio.run(KeywordBrain(cfg).decide([], "میں باتھ روم وچ ڈگ پئی آں", ""))
+    assert d.action == "emergency"
+
+
+def test_elevenlabs_voice_plays_cached_audio(cfg, tmp_path):
+    from helper_agent.voice import ElevenLabsVoice
+    voice = ElevenLabsVoice("key", "voice123", "eleven_v3", "https://helper.example", tmp_path)
+    calls = []
+    voice._synthesize = lambda text, vid: calls.append(text) or b"ID3fake"
+    app = create_app(cfg, KeywordBrain(cfg), ConsolePhone(), "https://helper.example", speaker=voice)
+    with TestClient(app) as client:
+        r = client.post("/voice/mom/incoming", data={"From": cfg.mom.phones[0], "CallSid": "CA9"})
+        assert "<Play>https://helper.example/audio/" in r.text and "<Say" not in r.text
+        url = r.text.split("<Play>")[1].split("</Play>")[0]
+        assert client.get(url.replace("https://helper.example", "")).content == b"ID3fake"
+        client.post("/voice/mom/incoming", data={"From": cfg.mom.phones[0], "CallSid": "CA10"})
+        assert len(calls) == 1  # the greeting is made once, then reused
+        assert client.get("/audio/..%2Fsecret.mp3").status_code == 404
+
+
+def test_elevenlabs_failure_falls_back_to_twilio_voice(cfg, tmp_path):
+    from helper_agent.voice import ElevenLabsVoice
+    voice = ElevenLabsVoice("key", "voice123", "eleven_v3", "https://helper.example", tmp_path)
+    def boom(text, vid):
+        raise OSError("network down")
+    voice._synthesize = boom
+    app = create_app(cfg, KeywordBrain(cfg), ConsolePhone(), "https://helper.example", speaker=voice)
+    with TestClient(app) as client:
+        r = client.post("/voice/mom/incoming", data={"From": cfg.mom.phones[0], "CallSid": "CA11"})
+        assert "<Say" in r.text

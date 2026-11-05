@@ -17,7 +17,7 @@ import time
 from datetime import datetime
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from twilio.request_validator import RequestValidator
 from twilio.twiml.messaging_response import MessagingResponse
@@ -28,6 +28,7 @@ from .brain import Brain, Decision
 from .config import Config
 from .dispatcher import Dispatcher, interpret_reply
 from .telephony import Phone
+from .voice import ElevenLabsVoice, TwilioVoice, Voice
 
 log = logging.getLogger(__name__)
 
@@ -41,10 +42,11 @@ def twiml(r) -> Response:
 
 def create_app(cfg: Config, brain: Brain, phone: Phone, public_url: str,
                activity: ActivityLog | None = None, twilio_auth_token: str | None = None,
-               dashboard_password: str | None = None) -> FastAPI:
+               dashboard_password: str | None = None, speaker: Voice | None = None) -> FastAPI:
     app = FastAPI(title="Mom's helper line")
     activity = activity or ActivityLog()
-    dispatcher = Dispatcher(cfg, phone, public_url, activity)
+    speaker = speaker or TwilioVoice()
+    dispatcher = Dispatcher(cfg, phone, public_url, activity, speaker)
     app.state.dispatcher = dispatcher
     validator = RequestValidator(twilio_auth_token) if twilio_auth_token else None
     base = public_url.rstrip("/")
@@ -62,14 +64,17 @@ def create_app(cfg: Config, brain: Brain, phone: Phone, public_url: str,
                 raise HTTPException(403, "Bad Twilio signature")
         return form
 
-    def say(r, text, lang=mom.language, voice=mom.voice):
-        r.say(text, language=lang, **({"voice": voice} if voice else {}))
+    async def say(r, text, lang=mom.language, voice=mom.voice):
+        await speaker.speak(r, text, lang, voice)
 
-    def listen(r, prompt: str | None):
+    # Names help speech recognition pick out who she means.
+    hints = ", ".join(dict.fromkeys(w for p in cfg.everyone for w in (p.name, p.role) if w))
+
+    async def listen(r, prompt: str | None):
         g = Gather(input="speech dtmf", action=f"{base}/voice/mom/heard", method="POST",
-                   language=mom.language, speech_timeout="auto", timeout=8, num_digits=1)
+                   language=mom.language, speech_timeout="auto", timeout=8, num_digits=1, hints=hints)
         if prompt:
-            say(g, prompt)
+            await say(g, prompt)
         r.append(g)
         r.redirect(f"{base}/voice/mom/heard?silent=1", method="POST")
 
@@ -81,13 +86,13 @@ def create_app(cfg: Config, brain: Brain, phone: Phone, public_url: str,
         caller = form.get("From", "")
         if not cfg.settings.allow_unknown_callers and not cfg.is_mom(caller):
             activity.add("stranger", f"Call from unknown number {caller} refused")
-            say(r, mom.stranger)
+            await say(r, mom.stranger)
             r.hangup()
             return twiml(r)
         sid = form.get("CallSid", "")
         conversations[sid], misses[sid] = [], 0
         activity.add("mom_called", "Mom called the helper line")
-        listen(r, mom.greeting.format(call_her=mom.call_her))
+        await listen(r, mom.greeting.format(call_her=mom.call_her))
         return twiml(r)
 
     @app.post("/voice/mom/heard")
@@ -107,10 +112,10 @@ def create_app(cfg: Config, brain: Brain, phone: Phone, public_url: str,
                     # She's struggling: get a person to ring her rather than loop forever.
                     fallback = _family_fallback(cfg)
                     dispatcher.start(fallback)
-                    say(r, fallback.say_to_mom)
+                    await say(r, fallback.say_to_mom)
                     r.hangup()
                     return twiml(r)
-                listen(r, mom.didnt_hear.format(call_her=mom.call_her))
+                await listen(r, mom.didnt_hear.format(call_her=mom.call_her))
                 return twiml(r)
             misses[sid] = 0
             activity.add("mom_said", heard)
@@ -120,7 +125,7 @@ def create_app(cfg: Config, brain: Brain, phone: Phone, public_url: str,
 
         done, _ = await asyncio.wait({thinking[sid]}, timeout=THINK_SECONDS)
         if not done:
-            say(r, mom.still_thinking)
+            await say(r, mom.still_thinking)
             r.redirect(f"{base}/voice/mom/heard", method="POST")
             return twiml(r)
 
@@ -134,12 +139,12 @@ def create_app(cfg: Config, brain: Brain, phone: Phone, public_url: str,
 
         if decision.action in ("dispatch", "emergency"):
             dispatcher.start(decision)
-        say(r, decision.say_to_mom)
+        await say(r, decision.say_to_mom)
 
         if decision.action in ("dispatch", "emergency", "goodbye") or len(history) >= MAX_TURNS * 2:
             r.hangup()  # the dispatcher calls her back with the answer
         else:
-            listen(r, None)
+            await listen(r, None)
         return twiml(r)
 
     # ---- Calls to helpers -----------------------------------------------
@@ -149,14 +154,14 @@ def create_app(cfg: Config, brain: Brain, phone: Phone, public_url: str,
         task, p = dispatcher.tasks.get(task_id), cfg.person(person)
         r = VoiceResponse()
         if not task or not p or task.status != "working":
-            say(r, "Thank you, this request has already been handled.", lang=cfg.lang_for(p) if p else mom.language)
+            await say(r, mom.helper_already_handled, lang=cfg.lang_for(p) if p else mom.language)
             r.hangup()
             return twiml(r)
         message = next((c.message for c in task.decision.contacts if c.helper_id == p.id), task.decision.summary)
         g = Gather(input="dtmf", num_digits=1, timeout=10, method="POST",
                    action=f"{base}/voice/helper/{task_id}/answer?person={p.id}&attempt={attempt}")
         for _ in range(2):
-            say(g, message, lang=cfg.lang_for(p), voice=p.voice)
+            await say(g, message, lang=cfg.lang_for(p), voice=p.voice)
             g.pause(length=2)
         r.append(g)
         r.hangup()  # no key press: the status callback counts it as no answer
@@ -170,7 +175,7 @@ def create_app(cfg: Config, brain: Brain, phone: Phone, public_url: str,
         r = VoiceResponse()
         if reply:
             dispatcher.record_reply(task_id, person, reply)
-            say(r, "Thank you." if reply == "yes" else "Okay, thank you.", lang=cfg.lang_for(p), voice=p.voice)
+            await say(r, mom.helper_thanks, lang=cfg.lang_for(p), voice=p.voice)
         else:
             dispatcher.record_no_answer(task_id, person, attempt)
         r.hangup()
@@ -232,6 +237,13 @@ td:first-child{{white-space:nowrap;color:#777}}.failed td,.stranger td{{backgrou
 <h1>{html.escape(mom.name)}'s helper line</h1><h2>In progress</h2><ul>{open_tasks}</ul>
 <h2>Activity</h2><table>{rows}</table>"""
 
+    @app.get("/audio/{key}.mp3")
+    async def audio(key: str):
+        path = speaker.path(key) if isinstance(speaker, ElevenLabsVoice) else None
+        if not path:
+            raise HTTPException(404)
+        return FileResponse(path, media_type="audio/mpeg")
+
     @app.get("/health")
     async def health():
         return {"ok": True}
@@ -244,7 +256,7 @@ def _family_fallback(cfg: Config) -> Decision:
     first = cfg.family[0]
     return Decision(
         action="dispatch",
-        say_to_mom=f"I'm asking {first.name} to call you back now, {cfg.mom.call_her}.",
+        say_to_mom=cfg.mom.asking_family.format(call_her=cfg.mom.call_her, name=cfg.spoken(first)),
         contacts=[Contact(helper_id=p.id, message=f"{cfg.mom.name} called her helper line and needs you. "
                           "Please call her back. Press 1 or reply 1 if you will, 2 if you can't.") for p in cfg.family],
         summary="Mom needs a call back (assistant couldn't understand)",
@@ -263,6 +275,12 @@ def app_from_env() -> FastAPI:
         if not env.get(key):
             raise SystemExit(f"Missing {key}: copy .env.example to .env and fill it in.")
     cfg = load_config(env.get("CONFIG", "config.yaml"))
+    speaker = TwilioVoice()
+    if cfg.settings.speech == "elevenlabs":
+        if not env.get("ELEVENLABS_API_KEY") or not cfg.settings.elevenlabs_voice_id:
+            raise SystemExit("speech is 'elevenlabs': set ELEVENLABS_API_KEY and settings.elevenlabs_voice_id.")
+        speaker = ElevenLabsVoice(env["ELEVENLABS_API_KEY"], cfg.settings.elevenlabs_voice_id,
+                                  cfg.settings.elevenlabs_model, env["PUBLIC_URL"], env.get("AUDIO_CACHE", "data/audio"))
     return create_app(
         cfg,
         brain=ClaudeBrain(cfg),
@@ -271,4 +289,5 @@ def app_from_env() -> FastAPI:
         activity=ActivityLog(env.get("ACTIVITY_LOG", "data/activity.jsonl")),
         twilio_auth_token=env["TWILIO_AUTH_TOKEN"],
         dashboard_password=env["DASHBOARD_PASSWORD"],
+        speaker=speaker,
     )
