@@ -1,0 +1,81 @@
+# Copy this file to config.yaml and fill in the real names and numbers.
+# Phone numbers in international format: +92 300 1234567, +44 7700 900123, +1 415 555 0100.
+
+mom:
+  name: "Mrs. Batth"                # used when talking to helpers: "This is a call for Mrs. Batth"
+  call_her: "Ammi"                  # what the assistant calls her
+  phones: ["+923000000000"]         # every number she calls from (mobile, landline). Other callers are refused.
+  # Twilio language code for listening and speaking to her, and its plain name.
+  # Check that Twilio supports your language for both speech recognition and <Say>:
+  #   https://www.twilio.com/docs/voice/twiml/gather#languagetags
+  #   https://www.twilio.com/docs/voice/twiml/say/text-speech#available-voices-and-languages
+  language: "en-US"
+  language_name: "English"          # e.g. "Urdu", "Punjabi", "Hindi"
+  # voice: "Google.en-US-Standard-C"  # optional: a specific Twilio voice
+  greeting: "Hello {call_her}, who do you need today?"
+  # Anything the assistant should know: health, routines, how she likes to be spoken to.
+  notes: |
+    Hears better when spoken to slowly. Goes to Dr. Khan's clinic on Tuesdays.
+    Prefers Rashid for rides. Groceries come from Akbar Store.
+  # What she hears when the agent calls her back. Translate these into her language.
+  said_yes: "{call_her}, good news. {name} said yes and will help you."
+  nobody_reached: "{call_her}, I could not reach {names}. I have told {family}, and they will call you soon."
+  didnt_hear: "Sorry {call_her}, I didn't hear you. Please tell me again."
+  still_thinking: "One moment."
+
+# Family: the last resort when nobody answers, and always alerted in an emergency.
+family:
+  - id: son
+    name: "Zeeshan"
+    phone: "+923001111111"
+    speed_dial: "9"                 # she can press 9 instead of speaking
+
+helpers:
+  - id: driver
+    name: "Rashid"
+    role: "Driver"
+    phone: "+923002222222"
+    helps_with: "rides, doctor visits, picking up medicines, shopping trips"
+    language: "en-US"               # how the agent speaks to him (Twilio code)
+    language_name: "English"
+    available: "8am to 8pm"
+    speed_dial: "1"
+
+  - id: maid
+    name: "Shazia"
+    role: "Housekeeper"
+    phone: "+923003333333"
+    helps_with: "cleaning, cooking, laundry, help around the house"
+    speed_dial: "2"
+
+  - id: nurse
+    name: "Nurse Amina"
+    role: "Home nurse"
+    phone: "+923004444444"
+    helps_with: "blood pressure, injections, feeling unwell, medicine questions"
+    speed_dial: "3"
+
+  - id: grocer
+    name: "Akbar Store"
+    role: "Grocery shop"
+    phone: "+923005555555"
+    helps_with: "groceries, milk, bread, household items delivered"
+
+  - id: plumber
+    name: "Bashir"
+    role: "Plumber and electrician"
+    phone: "+923006666666"
+    helps_with: "leaks, taps, toilet, water pump, lights, fans, wiring"
+
+settings:
+  attempts_per_helper: 3            # calls to each person before moving to the next
+  seconds_between_attempts: 120     # wait between calls (a text reply still counts while waiting)
+  ring_seconds: 25
+  wait_for_answer_seconds: 90       # how long to wait for a key press after calling
+  call_mom_with_result: true        # call her back: "Rashid said yes"
+  text_mom_with_result: false
+  text_family_every_request: false  # true: family gets a text for every request, not just problems
+  emergency_number: "1122"          # said to her in an emergency (1122 Pakistan, 112 EU/India, 911 US)
+  allow_unknown_callers: false
+  model: "claude-opus-5-5"
+  effort: "low"                     # low keeps phone replies quick
