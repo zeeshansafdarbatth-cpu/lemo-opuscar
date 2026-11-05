@@ -16,7 +16,7 @@ import time
 from dataclasses import dataclass, field
 
 from .activity import ActivityLog
-from .brain import Decision
+from .brain_types import Decision
 from .config import Config, Person
 from .telephony import Phone
 from .voice import TwilioVoice, Voice, spoken_twiml

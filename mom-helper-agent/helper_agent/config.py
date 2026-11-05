@@ -46,7 +46,7 @@ class Mom(BaseModel):
     voice: str | None = None
     notes: str = ""
     # Fixed things she hears. Write them in her language.
-    greeting: str = "Hello {call_her}, who do you need today?"
+    greeting: str = "Hello {call_her}, how can I help?"
     said_yes: str = "{call_her}, good news. {name} said yes and will help you."
     nobody_reached: str = "{call_her}, I could not reach {names}. I have told {family}, and they will call you soon."
     asking_family: str = "{call_her}, I'm asking {name} to call you now."
@@ -69,6 +69,12 @@ class Settings(BaseModel):
     text_family_every_request: bool = False
     emergency_number: str = "112"
     allow_unknown_callers: bool = False
+    # Where she lives: for local news, weather, prayer times, and the clock reminders use.
+    city: str = ""
+    country: str = "PK"
+    timezone: str = "Asia/Karachi"
+    # False: the family dashboard shows what the assistant did (calls, help requests), never what she said.
+    share_conversations: bool = False
     model: str = "claude-opus-5-5"
     effort: str = "low"
     # "twilio": Twilio's built-in voices. "elevenlabs": ElevenLabs voices (needs ELEVENLABS_API_KEY).

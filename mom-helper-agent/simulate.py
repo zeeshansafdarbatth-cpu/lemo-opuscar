@@ -1,4 +1,4 @@
-"""Try the helper line in the terminal, no phone account needed.
+"""Try her assistant in the terminal, no phone account needed.
 
     python simulate.py                 # uses Claude if ANTHROPIC_API_KEY (or `ant auth login`) is set
     python simulate.py --offline       # simple keyword brain, no API needed
@@ -15,11 +15,14 @@ import re
 import asyncio
 import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from urllib.parse import parse_qs, urlparse
 
 from helper_agent.activity import ActivityLog
 from helper_agent.config import load_config
 from helper_agent.dispatcher import Dispatcher
+from helper_agent.personal import Notebook, Reminders, run_reminders
+from helper_agent.tools import Toolbox
 
 
 class SimPhone:
@@ -50,7 +53,10 @@ class SimPhone:
         async with self.lock:
             if self.dispatcher.tasks[task_id].status != "working":
                 return
-            ans = await asyncio.to_thread(input, f"   📞 {name}'s phone rings (try {attempt}). You are {name}: 1=coming, 2=can't, Enter=no answer > ")
+            try:
+                ans = await asyncio.to_thread(input, f"   📞 {name}'s phone rings (try {attempt}). You are {name}: 1=coming, 2=can't, Enter=no answer > ")
+            except EOFError:
+                ans = ""
         reply = {"1": "yes", "2": "no"}.get(ans.strip())
         if reply:
             self.dispatcher.record_reply(task_id, person, reply)
@@ -67,40 +73,50 @@ async def main():
     cfg = load_config(args.config)
     s = cfg.settings
     s.seconds_between_attempts, s.wait_for_answer_seconds = 3, 60  # faster for a demo
-    if args.offline:
-        from helper_agent.offline_brain import KeywordBrain
-        brain = KeywordBrain(cfg)
-    else:
-        from helper_agent.brain import ClaudeBrain
-        brain = ClaudeBrain(cfg)
+    now = lambda: datetime.now(ZoneInfo(s.timezone)).replace(tzinfo=None)
 
     phone = SimPhone(cfg)
     dispatcher = Dispatcher(cfg, phone, "http://sim", ActivityLog())
     phone.dispatcher = dispatcher
+    notebook, reminders = Notebook(), Reminders()
+    toolbox = Toolbox(cfg, dispatcher, phone, notebook, reminders, ActivityLog(), now)
+    if args.offline:
+        from helper_agent.offline_brain import KeywordBrain
+        brain = KeywordBrain(cfg, toolbox)
+    else:
+        from helper_agent.brain import ClaudeBrain
+        brain = ClaudeBrain(cfg, toolbox)
+
+    async def ring(r):
+        print(f"\n   ⏰ the assistant phones {cfg.mom.call_her}: {r.text}")
+    reminder_loop = asyncio.create_task(run_reminders(reminders, now, ring, every=5))
 
     mom = cfg.mom
-    print(f"\n☎️  {mom.name} calls the helper line. (Type what she says. 'quit' to stop.)\n")
+    call = 1
+    print(f"\n☎️  {mom.name} calls her assistant. (Type what she says. 'quit' to stop.)\n")
     print(f"🤖 {mom.greeting.format(call_her=mom.call_her)}")
-    history: list[dict] = []
     while True:
-        heard = (await asyncio.to_thread(input, f"👵 {mom.call_her}: ")).strip()
+        try:
+            heard = (await asyncio.to_thread(input, f"👵 {mom.call_her}: ")).strip()
+        except EOFError:
+            break
         if heard.lower() in ("quit", "exit"):
             break
         if not heard:
             continue
-        context = f"Time now: {datetime.now():%A %d %B, %H:%M}. Earlier requests: {dispatcher.status_summary()}"
-        decision = await brain.decide(history, heard, context)
-        history += [{"role": "user", "content": f"[{context}]\n{mom.call_her} says: \"{heard}\""},
-                    {"role": "assistant", "content": decision.model_dump_json()}]
-        print(f"🤖 {decision.say_to_mom}")
-        if decision.action in ("dispatch", "emergency"):
-            print("   (call ends; the agent works in the background)")
-            dispatcher.start(decision)
+        context = (f"Time now: {now():%A %d %B %Y, %H:%M}. Her notebook: {notebook.describe()}. "
+                   f"Her reminders: {reminders.describe()}. Help requests today: {dispatcher.status_summary()}")
+        turn = await brain.respond(f"call{call}", f"{mom.call_her}: \"{heard}\"", context)
+        print(f"🤖 {turn.say}")
+        if turn.connect_to or turn.hang_up:
+            if turn.connect_to:
+                print(f"   🔗 (she is now talking with {cfg.person(turn.connect_to).name} in a live call)")
+            else:
+                print("   (call ends; the assistant works in the background)")
             await dispatcher.wait_idle()
-            history.clear()
+            call += 1
             print(f"\n☎️  {mom.call_her} calls again later.\n🤖 {mom.greeting.format(call_her=mom.call_her)}")
-        elif decision.action == "goodbye":
-            break
+    reminder_loop.cancel()
 
 
 if __name__ == "__main__":

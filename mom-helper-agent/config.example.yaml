@@ -17,11 +17,12 @@ mom:
 
   # Anything the assistant should know: health, routines, how she likes to be spoken to.
   notes: |
-    Speaks Punjabi at home and Urdu with outsiders. Hears better when spoken to slowly.
+    Speaks Punjabi at home and Urdu with outsiders. Says little and speaks softly; be patient.
+    Was very active all her life and likes to be treated as capable.
     Goes to Dr. Khan's clinic on Tuesdays. Prefers Rashid for rides. Groceries come from Akbar Store.
 
   # Fixed things she hears, in Urdu. {call_her}, {name}, {names}, {family} are filled in.
-  greeting: "السلام علیکم {call_her}۔ بتائیں، کس کو بلاؤں؟"
+  greeting: "السلام علیکم {call_her}۔ بتائیں، میں آپ کی کیا خدمت کروں؟"
   said_yes: "{call_her}، اچھی خبر ہے۔ {name} نے ہاں کر دی ہے، وہ آپ کی مدد کریں گے۔"
   nobody_reached: "{call_her}، {names} سے بات نہیں ہو سکی۔ میں نے {family} کو بتا دیا ہے، وہ جلدی آپ کو فون کریں گے۔"
   asking_family: "{call_her}، میں {name} کو کہہ رہی ہوں کہ آپ کو ابھی فون کریں۔"
@@ -93,6 +94,10 @@ settings:
   call_mom_with_result: true        # call her back: "Rashid said yes"
   text_mom_with_result: false
   text_family_every_request: false  # true: family gets a text for every request, not just problems
+  city: "Lahore"                    # for local weather, news and prayer times
+  country: "PK"
+  timezone: "Asia/Karachi"
+  share_conversations: false        # her words stay private; the family dashboard shows only actions
   emergency_number: "1122"          # said to her in an emergency (1122 Pakistan, 112 EU/India, 911 US)
   allow_unknown_callers: false
   model: "claude-opus-5-5"
