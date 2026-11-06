@@ -1,0 +1,14 @@
+One Orange — Flat Illustration Motion demo: credits
+
+Everything in the picture is drawn by code in this folder (engine/, film.js). No images, video or samples.
+
+Fonts (SIL Open Font License 1.1, downloaded by build.sh into fonts/, licence texts in fonts/):
+- Gochi Hand — Copyright (c) 2011, Juan Pablo del Peral (Huerta Tipográfica). https://github.com/google/fonts/tree/main/ofl/gochihand
+- Caveat Brush — Copyright 2015 Google Inc. (Impallari Type). https://github.com/google/fonts/tree/main/ofl/caveatbrush
+
+Music: original, synthesized in music/score.py (no samples).
+Sound effects: synthesized in mix.py and core/audio/sfx.py (no recordings).
+
+Code from the library: core/lib.js, core/audio/sfx.py, core/render/* — MIT licence, Lemo-Opuscar.
+
+Reference study (STUDY.md): two studio screen recordings supplied by the user, measured for grammar only; not included, not redistributed.

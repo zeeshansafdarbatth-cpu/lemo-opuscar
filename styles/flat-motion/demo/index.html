@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>One Orange</title>
+<style>
+@font-face { font-family: 'Gochi Hand'; src: url(fonts/GochiHand-Regular.ttf); font-display: block; }
+html,body{margin:0;background:#000;overflow:hidden}canvas{position:absolute;left:0;top:0;display:block}
+</style>
+</head><body><canvas id="c" width="1920" height="1080"></canvas>
+<script type="module">
+import { renderFrame, textsAt } from './film.js';
+import { DUR, EV } from './timeline.js';
+import { modelSheet } from './sheet.js';
+const q = new URLSearchParams(location.search);
+const ctx = document.getElementById('c').getContext('2d');
+window.DUR = DUR;
+window.EV = EV;
+window.render = q.get('test') === 'model' ? (() => modelSheet(ctx)) : (t => renderFrame(ctx, t));
+window.TEXTS = t => textsAt(ctx, t);
+await document.fonts.load('120px "Gochi Hand"');
+if (q.get('t')) renderFrame(ctx, parseFloat(q.get('t')));
+window.READY = true;
+</script></body></html>
